@@ -1,1 +1,14 @@
-const C='movetrack-multi-v1',A=['./','./index.html','./manifest.webmanifest','./icon.svg'];self.addEventListener('install',e=>e.waitUntil(caches.open(C).then(c=>c.addAll(A)).then(()=>self.skipWaiting())));self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));self.addEventListener('fetch',e=>{if(e.request.method==='GET')e.respondWith(caches.match(e.request).then(x=>x||fetch(e.request).then(r=>{let c=r.clone();caches.open(C).then(k=>k.put(e.request,c));return r})))})
+// MoveTrack cache reset: clear old cached pages so GitHub Pages can show the latest index.html.
+self.addEventListener("install", event => self.skipWaiting());
+self.addEventListener("activate", event => {
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.map(key => caches.delete(key)));
+    await self.registration.unregister();
+    const tabs = await self.clients.matchAll({ type: "window" });
+    for (const tab of tabs) tab.navigate(tab.url);
+  })());
+});
+self.addEventListener("fetch", event => {
+  event.respondWith(fetch(event.request));
+});
