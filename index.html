@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#0d1117">
+<meta name="description" content="MoveTrack — a mobile movement, step, distance and calorie tracker.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<title>MoveTrack — Movement Tracker</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{min-height:100%;background:#0d1117;color:#e6edf3;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+body{overscroll-behavior:none}
+button,input{font:inherit}
+button{cursor:pointer}
+#app{max-width:520px;margin:auto;padding:16px 16px 42px}
+header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+h1{font-size:22px}h1 span{color:#2f81f7}
+.badge{font-size:11px;padding:5px 10px;border-radius:20px;background:#21262d;color:#8b949e}
+.badge.on{background:#12361f;color:#3fb950}
+.card,.stat{background:#161b22;border:1px solid #21262d;border-radius:16px}
+.card{padding:17px;margin-bottom:14px}
+#stepsHero{text-align:center}
+#stepCount{font-size:58px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+#stepCount small{font-size:15px;font-weight:500;color:#8b949e}
+.goalbar{height:9px;background:#21262d;border-radius:9px;margin-top:15px;overflow:hidden}
+.goalbar>div{height:100%;width:0;background:linear-gradient(90deg,#2f81f7,#3fb950);transition:width .35s}
+#goalLabel{font-size:12px;color:#8b949e;margin-top:8px}
+.statsGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:14px}
+.stat{text-align:center;padding:13px 7px}
+.stat .val{font-size:19px;font-weight:750;font-variant-numeric:tabular-nums}
+.stat .lbl{font-size:10px;color:#8b949e;margin-top:4px;text-transform:uppercase;letter-spacing:.5px}
+.sectionTitle{font-size:13px;font-weight:700;margin-bottom:12px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+label{display:block;font-size:11px;color:#8b949e;margin-bottom:5px}
+input{width:100%;padding:11px;border-radius:10px;border:1px solid #30363d;background:#0d1117;color:#e6edf3;outline:none}
+input:focus{border-color:#2f81f7}
+.btn{display:block;width:100%;padding:14px;border:0;border-radius:13px;font-size:15px;font-weight:700;color:#fff;transition:transform .1s,opacity .2s}
+.btn:active{transform:scale(.97)}
+.primary{background:#2f81f7}.stop{background:#da3633}.green{background:#238636}.dark{background:#21262d;color:#c9d1d9}
+#installBtn{display:none;margin-bottom:12px}
+canvas{display:block;width:100%;height:120px}
+.chartLabel{font-size:11px;color:#8b949e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.historyRow{display:flex;justify-content:space-between;gap:8px;padding:11px 0;border-bottom:1px solid #21262d;font-size:13px}
+.historyRow:last-child{border-bottom:0}
+.historyDate{color:#c9d1d9}.historySteps{font-weight:700}.historyMeta{color:#8b949e;font-size:11px}
+.empty{color:#8b949e;font-size:12px;text-align:center;padding:10px}
+.hint{font-size:11px;color:#8b949e;text-align:center;line-height:1.5;margin-top:12px}
+.smallBtn{padding:9px 11px;border:0;border-radius:9px;background:#21262d;color:#c9d1d9;font-size:12px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+#sensorHelp{display:none;margin-top:10px}
+details summary{cursor:pointer;color:#8b949e;font-size:12px}
+@media(max-width:360px){#stepCount{font-size:48px}.statsGrid{gap:6px}.stat{padding:11px 4px}}
+</style>
+</head>
+<body>
+<div id="app">
+<header><h1>Move<span>Track</span></h1><div id="sensorBadge" class="badge">Sensors off</div></header>
+
+<button id="installBtn" class="btn green">📲 Install MoveTrack</button>
+<button id="enableBtn" class="btn green" style="display:none;margin-bottom:12px">📱 Enable Motion Sensors</button>
+
+<section class="card" id="stepsHero">
+  <div id="stepCount">0 <small>steps</small></div>
+  <div class="goalbar"><div id="goalFill"></div></div>
+  <div id="goalLabel">Goal: 10,000 steps — 0%</div>
+</section>
+
+<div class="statsGrid">
+  <div class="stat"><div class="val" id="distVal">0.00</div><div class="lbl">km</div></div>
+  <div class="stat"><div class="val" id="calVal">0</div><div class="lbl">kcal</div></div>
+  <div class="stat"><div class="val" id="timeVal">0:00</div><div class="lbl">active</div></div>
+</div>
+
+<section class="card">
+  <div class="row"><div class="sectionTitle">Your profile</div><button id="saveProfile" class="smallBtn">Save</button></div>
+  <div class="grid2">
+    <div><label for="name">Name</label><input id="name" maxlength="30" placeholder="Your name"></div>
+    <div><label for="goal">Daily step goal</label><input id="goal" type="number" min="100" max="100000" value="10000"></div>
+    <div><label for="weight">Weight (kg)</label><input id="weight" type="number" min="20" max="300" value="70"></div>
+    <div><label for="height">Height (cm)</label><input id="height" type="number" min="100" max="230" value="170"></div>
+  </div>
+  <div class="hint">Distance and calories are estimated from your profile and detected steps.</div>
+</section>
+
+<section class="card">
+  <div class="chartLabel">Movement intensity — last 30 seconds</div>
+  <canvas id="chart"></canvas>
+</section>
+
+<button id="toggleBtn" class="btn primary">▶ Start Tracking</button>
+<button id="resetBtn" class="btn dark" style="margin-top:10px">Reset today's session</button>
+
+<section class="card" style="margin-top:14px">
+  <div class="row"><div class="sectionTitle">Daily history</div><button id="clearHistory" class="smallBtn">Clear</button></div>
+  <div id="history"></div>
+</section>
+
+<details class="hint">
+<summary>How it works</summary>
+<p style="margin-top:8px">MoveTrack estimates steps using your phone's motion sensor. Keep the phone with you while walking. For best results, keep the screen open. Browser sensor access varies by phone and browser.</p>
+</details>
+</div>
+
+<script>
+(()=>{"use strict";
+const $=id=>document.getElementById(id);
+const els={
+ step:$("stepCount"),dist:$("distVal"),cal:$("calVal"),time:$("timeVal"),fill:$("goalFill"),goalLabel:$("goalLabel"),
+ toggle:$("toggleBtn"),reset:$("resetBtn"),enable:$("enableBtn"),badge:$("sensorBadge"),canvas:$("chart"),
+ history:$("history"),install:$("installBtn"),name:$("name"),goal:$("goal"),weight:$("weight"),height:$("height"),
+ saveProfile:$("saveProfile"),clearHistory:$("clearHistory")
+};
+let state={steps:0,activeMs:0,day:todayKey()};
+let profile={name:"",goal:10000,weight:70,height:170};
+let tracking=false,sensorAttached=false,lastStepT=0,lastSampleT=0,lastTick=0;
+let gravity=9.81, values=[],samples=[],deferredInstall=null;
+
+const STEP_THRESHOLD=1.25, MIN_STEP_MS=260, SAMPLE_MS=35;
+
+function todayKey(){return new Date().toISOString().slice(0,10)}
+function load(){
+ try{
+  const s=JSON.parse(localStorage.getItem("movetrack_state")||"null");
+  const p=JSON.parse(localStorage.getItem("movetrack_profile")||"null");
+  if(s && s.day===todayKey()) state=s; else if(s) archiveDay(s);
+  if(p) profile={...profile,...p};
+ }catch(e){}
+ els.name.value=profile.name;els.goal.value=profile.goal;els.weight.value=profile.weight;els.height.value=profile.height;
+}
+function save(){try{localStorage.setItem("movetrack_state",JSON.stringify(state))}catch(e){}}
+function saveProfile(){profile={name:els.name.value.trim(),goal:clamp(+els.goal.value||10000,100,100000),weight:clamp(+els.weight.value||70,20,300),height:clamp(+els.height.value||170,100,230)};localStorage.setItem("movetrack_profile",JSON.stringify(profile));els.goal.value=profile.goal;render()}
+function clamp(n,a,b){return Math.max(a,Math.min(b,n))}
+function historyData(){try{return JSON.parse(localStorage.getItem("movetrack_history")||"[]")}catch(e){return[]}}
+function archiveDay(s){
+ if(!s||!s.day)return;
+ let h=historyData().filter(x=>x.date!==s.day);h.unshift({date:s.day,steps:s.steps,activeMs:s.activeMs});h=h.slice(0,30);
+ localStorage.setItem("movetrack_history",JSON.stringify(h));
+}
+function fmtTime(ms){let sec=Math.floor(ms/1000),h=Math.floor(sec/3600),m=Math.floor(sec%3600/60),s=sec%60;return h?`${h}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`:`${m}:${String(s).padStart(2,"0")}`}
+function strideM(){return (profile.height/100)*0.415}
+function distanceKm(){return state.steps*strideM()/1000}
+function calories(){return Math.round(state.steps*strideM()/1000*profile.weight*0.53)}
+function render(){
+ els.step.innerHTML=state.steps.toLocaleString()+" <small>steps</small>";
+ els.dist.textContent=distanceKm().toFixed(2);
+ els.cal.textContent=calories().toLocaleString();
+ els.time.textContent=fmtTime(state.activeMs);
+ let pct=Math.min(100,state.steps/profile.goal*100);els.fill.style.width=pct+"%";
+ els.goalLabel.textContent=`Goal: ${profile.goal.toLocaleString()} steps — ${Math.round(pct)}%`;
+ drawChart();renderHistory();
+}
+function renderHistory(){
+ let h=historyData(); if(!h.length){els.history.innerHTML='<div class="empty">No previous days yet.</div>';return}
+ els.history.innerHTML=h.map(x=>`<div class="historyRow"><div><div class="historyDate">${x.date}</div><div class="historyMeta">${fmtTime(x.activeMs||0)} active</div></div><div class="historySteps">${(x.steps||0).toLocaleString()} steps</div></div>`).join("");
+}
+function drawChart(){
+ const c=els.canvas,ctx=c.getContext("2d"),dpr=devicePixelRatio||1,w=c.clientWidth,h=c.clientHeight;
+ if(c.width!==w*dpr||c.height!==h*dpr){c.width=w*dpr;c.height=h*dpr}ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
+ const now=performance.now(),pts=samples.filter(s=>now-s.t<30000);
+ if(pts.length<2){ctx.fillStyle="#484f58";ctx.font="12px sans-serif";ctx.fillText("Start tracking to see live movement…",8,h/2);return}
+ const maxV=4;ctx.beginPath();ctx.strokeStyle="#2f81f7";ctx.lineWidth=2;
+ pts.forEach((p,i)=>{let x=w-(now-p.t)/30000*w,y=h-Math.min(1,p.mag/maxV)*(h-8)-4;i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke();
+}
+function attachSensor(){if(sensorAttached)return;window.addEventListener("devicemotion",onMotion,{passive:true});sensorAttached=true;els.badge.textContent="Sensors on";els.badge.classList.add("on")}
+async function requestSensors(){
+ try{
+  if(typeof DeviceMotionEvent!=="undefined"&&typeof DeviceMotionEvent.requestPermission==="function"){
+   const r=await DeviceMotionEvent.requestPermission();if(r!=="granted")throw Error("denied");
+  }
+  attachSensor();els.enable.style.display="none";startTracking();
+ }catch(e){els.enable.style.display="block";alert("Motion sensor permission was not granted. Please allow motion access in your browser settings.")}
+}
+function onMotion(e){
+ const a=e.accelerationIncludingGravity;if(!a||a.x==null)return;
+ const now=performance.now();if(now-lastSampleT<SAMPLE_MS)return;lastSampleT=now;
+ const mag=Math.hypot(a.x,a.y,a.z);gravity=gravity*.9+mag*.1;const dyn=Math.abs(mag-gravity);
+ samples.push({t:now,mag:dyn});if(samples.length>900)samples.shift();if(!tracking)return;
+ values.push(dyn);if(values.length>7)values.shift();
+ if(values.length===7){
+  const mid=values[3], localMax=mid>=Math.max(...values.filter((_,i)=>i!==3));
+  if(mid>STEP_THRESHOLD&&localMax&&now-lastStepT>MIN_STEP_MS){state.steps++;lastStepT=now;save();render()}
+ }
+}
+function startTracking(){if(!sensorAttached){requestSensors();return}tracking=true;els.toggle.textContent="⏸ Stop Tracking";els.toggle.classList.add("stop");lastTick=performance.now()}
+function stopTracking(){tracking=false;els.toggle.textContent="▶ Start Tracking";els.toggle.classList.remove("stop");save()}
+function tick(){
+ const now=performance.now();
+ if(tracking&&lastTick){state.activeMs+=now-lastTick; if(Math.floor(state.activeMs/1000)%5===0)save();els.time.textContent=fmtTime(state.activeMs)}
+ lastTick=now;drawChart();requestAnimationFrame(tick)
+}
+function reset(){if(!confirm("Reset today's steps and active time?"))return;state={steps:0,activeMs:0,day:todayKey()};samples=[];values=[];save();render()}
+function clearHistory(){if(!confirm("Clear all daily history?"))return;localStorage.removeItem("movetrack_history");renderHistory()}
+els.saveProfile.onclick=saveProfile;els.reset.onclick=reset;els.clearHistory.onclick=clearHistory;
+els.enable.onclick=requestSensors;els.toggle.onclick=()=>tracking?stopTracking():startTracking();
+window.addEventListener("beforeunload",save);
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&tracking&&"wakeLock"in navigator)navigator.wakeLock.request("screen").catch(()=>{})});
+
+window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferredInstall=e;els.install.style.display="block"});
+els.install.onclick=async()=>{if(!deferredInstall)return;deferredInstall.prompt();await deferredInstall.userChoice;deferredInstall=null;els.install.style.display="none"};
+
+load();
+if(typeof DeviceMotionEvent==="undefined"||typeof DeviceMotionEvent.requestPermission!=="function")attachSensor();else els.enable.style.display="block";
+render();tick();
+})();
+</script>
+<script>
+if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}))}
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "MoveTrack — Movement Tracker",
+  "short_name": "MoveTrack",
+  "description": "Track steps, distance, calories, active time and daily history.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0d1117",
+  "theme_color": "#0d1117",
+  "orientation": "portrait",
+  "icons": [
+    {"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
+  ]
+}
