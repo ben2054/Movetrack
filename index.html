@@ -92,6 +92,7 @@ $("logout").onclick=()=>signOut(auth);
 async function load(){
   const p=await getDoc(doc(db,"users",user.uid));
   if(p.exists())profile={...profile,...p.data()};
+profile.email=user.email||profile.email||"";
   const d=await getDoc(doc(db,"users",user.uid,"days",day()));
   steps=d.exists()?d.data().steps||0:0;
   active=d.exists()?d.data().activeMs||0:0;
