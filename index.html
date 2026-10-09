@@ -16,43 +16,35 @@ input{width:100%;padding:12px;margin:5px 0 9px;background:#0d1117;color:#fff;bor
 .tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px}.tab{background:#21262d;color:#ddd;border:0;border-radius:9px;padding:10px}.active{background:#2f81f7;color:white}
 .steps{text-align:center;font-size:58px;font-weight:800}.steps small{font-size:14px;color:#8b949e}.bar{height:9px;background:#21262d;border-radius:9px;overflow:hidden}.bar div{height:100%;background:linear-gradient(90deg,#2f81f7,#3fb950)}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.stat{text-align:center;background:#161b22;border:1px solid #30363d;border-radius:14px;padding:12px}.stat b{display:block;font-size:19px}
-.muted{color:#8b949e;font-size:12px}.history{padding:9px 0;border-bottom:1px solid #30363d}.msg{font-size:12px;color:#f85149;margin:7px 0}
+.muted{color:#8b949e;font-size:12px}.history{padding:9px 0;border-bottom:1px solid #30363d}.msg{font-size:12px;color:#f85149;margin:7px 0;overflow-wrap:anywhere}
 </style>
 </head>
 <body>
 <main>
 <header class="row"><h1>Move<span>Track</span></h1><span id="sensor" class="badge">Sensors off</span></header>
-
 <section id="auth" class="card">
 <div class="tabs"><button id="lt" class="tab active">Log in</button><button id="st" class="tab">Create account</button></div>
-<input id="email" type="email" placeholder="Email">
-<input id="pass" type="password" placeholder="Password (6+ characters)">
+<input id="email" type="email" placeholder="Email" autocomplete="email">
+<input id="pass" type="password" placeholder="Password (6+ characters)" autocomplete="current-password">
 <button id="authBtn" class="btn">Log in</button>
 <div id="authMsg" class="msg"></div>
 <p class="muted">Create an account to keep your profile and activity in the cloud.</p>
 </section>
-
 <section id="app">
 <section class="card row"><div><b id="welcome">Welcome</b><div id="acct" class="muted"></div></div><button id="logout" class="btn dark" style="width:auto">Log out</button></section>
 <button id="enable" class="btn green" style="display:none">📱 Enable Motion Sensors</button>
-
 <section class="card"><div class="steps" id="steps">0 <small>steps</small></div><div class="bar"><div id="fill" style="width:0"></div></div><p class="muted" id="goalText">Goal: 10,000 steps — 0%</p></section>
 <div class="stats"><div class="stat"><b id="dist">0.00</b><span class="muted">km</span></div><div class="stat"><b id="cal">0</b><span class="muted">kcal</span></div><div class="stat"><b id="time">0:00</b><span class="muted">active</span></div></div>
-
 <section class="card"><div class="row"><b>Profile</b><button id="save" class="btn dark" style="width:auto">Save</button></div>
-<div class="grid"><label>Name<input id="name"></label><label>Goal<input id="goal" type="number"></label><label>Weight kg<input id="weight" type="number"></label><label>Height cm<input id="height" type="number"></label></div>
-<div id="profileMsg" class="muted"></div></section>
-
+<div class="grid"><label>Name<input id="name" autocomplete="name"></label><label>Goal<input id="goal" type="number"></label><label>Weight kg<input id="weight" type="number"></label><label>Height cm<input id="height" type="number"></label></div><div id="profileMsg" class="muted"></div></section>
 <button id="toggle" class="btn">▶ Start Tracking</button><button id="reset" class="btn dark">Reset today</button>
 <section class="card"><div class="row"><b>Daily history</b><button id="clear" class="btn dark" style="width:auto">Clear</button></div><div id="history"></div></section>
 </section>
 </main>
-
 <script type="module">
 import{initializeApp}from"https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
 import{getAuth,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut}from"https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
 import{getFirestore,doc,getDoc,setDoc,collection,query,orderBy,limit,getDocs,deleteDoc}from"https://www.gstatic.com/firebasejs/12.5.0/firebase-firestore.js";
-
 const firebaseConfig={
   apiKey:"AIzaSyAmiyrtAjvIohRRuvBA3oQrazU-mT7nr4M",
   authDomain:"movetrack2.firebaseapp.com",
@@ -62,128 +54,61 @@ const firebaseConfig={
   appId:"1:631331628340:web:9a7611dc9e1ecb7ba03161",
   measurementId:"G-PQSDENK27F"
 };
-
-const app=initializeApp(firebaseConfig);
-const auth=getAuth(app);
-const db=getFirestore(app);
+const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app);
 const $=id=>document.getElementById(id);
 let user=null,mode="login",tracking=false,attached=false,steps=0,active=0,last=0,lastStep=0,gravity=9.81,vals=[];
 let profile={name:"",goal:10000,weight:70,height:170};
-
 const day=()=>new Date().toISOString().slice(0,10);
 const fmt=ms=>{let s=Math.floor(ms/1000),m=Math.floor(s/60),h=Math.floor(m/60);m%=60;return h?`${h}:${String(m).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`:`${m}:${String(s%60).padStart(2,"0")}`};
 const showMsg=(t,error=false)=>{$("authMsg").textContent=t;$("authMsg").style.color=error?"#f85149":"#3fb950"};
-
-$("lt").onclick=()=>{mode="login";$("lt").classList.add("active");$("st").classList.remove("active");$("authBtn").textContent="Log in"};
-$("st").onclick=()=>{mode="signup";$("st").classList.add("active");$("lt").classList.remove("active");$("authBtn").textContent="Create account"};
-
+function errorText(x){
+ const code=x&&x.code?x.code:"unknown-error";
+ const message=x&&x.message?x.message:"No additional error details were provided.";
+ return code+" — "+message;
+}
+$("lt").onclick=()=>{mode="login";$("lt").classList.add("active");$("st").classList.remove("active");$("authBtn").textContent="Log in";$("pass").autocomplete="current-password";showMsg("")};
+$("st").onclick=()=>{mode="signup";$("st").classList.add("active");$("lt").classList.remove("active");$("authBtn").textContent="Create account";$("pass").autocomplete="new-password";showMsg("")};
 $("authBtn").onclick=async()=>{
-  const e=$("email").value.trim(),p=$("pass").value;
-  if(!e||p.length<6)return showMsg("Enter a valid email and password of at least 6 characters.",true);
-  try{
-    if(mode==="signup"){
-      const c=await createUserWithEmailAndPassword(auth,e,p);
-      await setDoc(doc(db,"users",c.user.uid),{email:e,name:"",goal:10000,weight:70,height:170},{merge:true});
-    }else await signInWithEmailAndPassword(auth,e,p);
-  }catch(x){showMsg(x.message.replace("Firebase: ","").replace(/\s*\(auth\/.*\)\.?/,""),true)}
+ const e=$("email").value.trim(),p=$("pass").value;
+ if(!e||p.length<6)return showMsg("Enter a valid email and password of at least 6 characters.",true);
+ $("authBtn").disabled=true;$("authBtn").textContent="Please wait…";
+ try{
+  if(mode==="signup"){
+   const c=await createUserWithEmailAndPassword(auth,e,p);
+   await setDoc(doc(db,"users",c.user.uid),{email:e,name:"",goal:10000,weight:70,height:170},{merge:true});
+  }else await signInWithEmailAndPassword(auth,e,p);
+ }catch(x){showMsg(errorText(x),true)}
+ finally{$("authBtn").disabled=false;$("authBtn").textContent=mode==="signup"?"Create account":"Log in"}
 };
-$("logout").onclick=()=>signOut(auth);
-
+$("logout").onclick=()=>signOut(auth).catch(x=>showMsg(errorText(x),true));
 async function load(){
-  const p=await getDoc(doc(db,"users",user.uid));
-  if(p.exists())profile={...profile,...p.data()};
-  const d=await getDoc(doc(db,"users",user.uid,"days",day()));
-  steps=d.exists()?d.data().steps||0:0;
-  active=d.exists()?d.data().activeMs||0:0;
-  for(const k of ["name","goal","weight","height"])$(k).value=profile[k]??"";
-  render();await history();
+ const p=await getDoc(doc(db,"users",user.uid));if(p.exists())profile={...profile,...p.data()};
+ const d=await getDoc(doc(db,"users",user.uid,"days",day()));steps=d.exists()?d.data().steps||0:0;active=d.exists()?d.data().activeMs||0:0;
+ for(const k of ["name","goal","weight","height"])$(k).value=profile[k]??"";
+ render();await history();
 }
-async function saveDay(){
-  if(!user)return;
-  await setDoc(doc(db,"users",user.uid,"days",day()),{date:day(),steps,activeMs:Math.round(active),updatedAt:Date.now()},{merge:true});
-}
-async function history(){
-  if(!user)return;
-  const q=query(collection(db,"users",user.uid,"days"),orderBy("date","desc"),limit(30));
-  const s=await getDocs(q);
-  $("history").innerHTML=s.empty?'<p class="muted">No history yet.</p>':
-    s.docs.map(d=>`<div class="history"><b>${d.data().date}</b> — ${(d.data().steps||0).toLocaleString()} steps <span class="muted">${fmt(d.data().activeMs||0)} active</span></div>`).join("");
-}
+async function saveDay(){if(!user)return;await setDoc(doc(db,"users",user.uid,"days",day()),{date:day(),steps,activeMs:Math.round(active),updatedAt:Date.now()},{merge:true})}
+async function history(){if(!user)return;const q=query(collection(db,"users",user.uid,"days"),orderBy("date","desc"),limit(30)),s=await getDocs(q);$("history").innerHTML=s.empty?'<p class="muted">No history yet.</p>':s.docs.map(d=>`<div class="history"><b>${d.data().date}</b> — ${(d.data().steps||0).toLocaleString()} steps <span class="muted">${fmt(d.data().activeMs||0)} active</span></div>`).join("")}
 function stride(){return(+profile.height||170)/100*.415}
-function render(){
-  const km=steps*stride()/1000,kcal=Math.round(km*(+profile.weight||70)*.53),g=+profile.goal||10000,p=Math.min(100,steps/g*100);
-  $("steps").innerHTML=steps.toLocaleString()+" <small>steps</small>";
-  $("dist").textContent=km.toFixed(2);$("cal").textContent=kcal.toLocaleString();$("time").textContent=fmt(active);
-  $("fill").style.width=p+"%";$("goalText").textContent=`Goal: ${g.toLocaleString()} steps — ${Math.round(p)}%`;
-}
-$("save").onclick=async()=>{
-  profile={name:$("name").value.trim(),goal:+$("goal").value||10000,weight:+$("weight").value||70,height:+$("height").value||170};
-  await setDoc(doc(db,"users",user.uid),profile,{merge:true});
-  $("profileMsg").textContent="Profile saved.";render();
-};
-function motion(e){
-  const a=e.accelerationIncludingGravity;if(!a||a.x==null)return;
-  const n=performance.now();if(n-last<35)return;last=n;
-  const mag=Math.hypot(a.x,a.y,a.z);gravity=gravity*.9+mag*.1;
-  const d=Math.abs(mag-gravity);if(!tracking)return;
-  vals.push(d);if(vals.length>7)vals.shift();
-  if(vals.length===7&&vals[3]>1.25&&vals[3]>=Math.max(...vals.filter((_,i)=>i!==3))&&n-lastStep>260){
-    steps++;lastStep=n;render();saveDay().catch(()=>{});
-  }
-}
-function attach(){
-  if(attached)return;
-  window.addEventListener("devicemotion",motion,{passive:true});
-  attached=true;$("sensor").textContent="Sensors on";$("sensor").classList.add("on");
-}
-async function requestSensors(){
-  try{
-    if(typeof DeviceMotionEvent!=="undefined"&&typeof DeviceMotionEvent.requestPermission==="function"){
-      const r=await DeviceMotionEvent.requestPermission();
-      if(r!=="granted")throw new Error("denied");
-    }
-    attach();$("enable").style.display="none";start();
-  }catch(e){alert("Motion sensor permission was not granted.")}
-}
-function start(){
-  if(!attached)return requestSensors();
-  tracking=true;$("toggle").textContent="⏸ Stop Tracking";$("toggle").classList.add("red");last=performance.now();
-}
-function stop(){
-  tracking=false;$("toggle").textContent="▶ Start Tracking";$("toggle").classList.remove("red");saveDay().catch(()=>{});
-}
-$("enable").onclick=requestSensors;
-$("toggle").onclick=()=>tracking?stop():start();
-$("reset").onclick=async()=>{if(confirm("Reset today's session?")){steps=0;active=0;await saveDay();render();await history()}};
-$("clear").onclick=async()=>{
-  if(!confirm("Delete your saved history?"))return;
-  const s=await getDocs(query(collection(db,"users",user.uid,"days"),limit(100)));
-  await Promise.all(s.docs.map(x=>deleteDoc(x.ref)));steps=0;active=0;render();await history();
-};
-
-function tick(){
-  if(tracking){
-    active+=16;
-    if(Math.floor(active/5000)!==Math.floor((active-16)/5000))saveDay().catch(()=>{});
-    $("time").textContent=fmt(active);
-  }
-  requestAnimationFrame(tick);
-}
-tick();
-
-if(typeof DeviceMotionEvent==="undefined"||typeof DeviceMotionEvent.requestPermission!=="function")attach();
-else $("enable").style.display="block";
-
-onAuthStateChanged(auth,async u=>{
-  user=u;
-  if(u){
-    $("auth").style.display="none";$("app").style.display="block";$("acct").textContent=u.email;
-    $("welcome").textContent="Welcome";await load();
-  }else{
-    $("auth").style.display="block";$("app").style.display="none";
-  }
-});
+function render(){const km=steps*stride()/1000,kcal=Math.round(km*(+profile.weight||70)*.53),g=+profile.goal||10000,p=Math.min(100,steps/g*100);$("steps").innerHTML=steps.toLocaleString()+" <small>steps</small>";$("dist").textContent=km.toFixed(2);$("cal").textContent=kcal.toLocaleString();$("time").textContent=fmt(active);$("fill").style.width=p+"%";$("goalText").textContent=`Goal: ${g.toLocaleString()} steps — ${Math.round(p)}%`}
+$("save").onclick=async()=>{if(!user)return;profile={name:$("name").value.trim(),goal:+$("goal").value||10000,weight:+$("weight").value||70,height:+$("height").value||170};try{await setDoc(doc(db,"users",user.uid),profile,{merge:true});$("profileMsg").textContent="Profile saved.";render()}catch(x){$("profileMsg").textContent=errorText(x)}};
+function motion(e){const a=e.accelerationIncludingGravity;if(!a||a.x==null)return;const n=performance.now();if(n-last<35)return;last=n;const mag=Math.hypot(a.x,a.y,a.z);gravity=gravity*.9+mag*.1;const d=Math.abs(mag-gravity);if(!tracking)return;vals.push(d);if(vals.length>7)vals.shift();if(vals.length===7&&vals[3]>1.25&&vals[3]>=Math.max(...vals.filter((_,i)=>i!==3))&&n-lastStep>260){steps++;lastStep=n;render();saveDay().catch(()=>{})}}
+function attach(){if(attached)return;window.addEventListener("devicemotion",motion,{passive:true});attached=true;$("sensor").textContent="Sensors on";$("sensor").classList.add("on")}
+async function requestSensors(){try{if(typeof DeviceMotionEvent!=="undefined"&&typeof DeviceMotionEvent.requestPermission==="function"){const r=await DeviceMotionEvent.requestPermission();if(r!=="granted")throw new Error("denied")}attach();$("enable").style.display="none";start()}catch(e){alert("Motion sensor permission was not granted.")}}
+function start(){if(!attached)return requestSensors();tracking=true;$("toggle").textContent="⏸ Stop Tracking";$("toggle").classList.add("red");last=performance.now()}
+function stop(){tracking=false;$("toggle").textContent="▶ Start Tracking";$("toggle").classList.remove("red");saveDay().catch(()=>{})}
+$("enable").onclick=requestSensors;$("toggle").onclick=()=>tracking?stop():start();
+$("reset").onclick=async()=>{if(confirm("Reset today's session?")){steps=0;active=0;try{await saveDay();render();await history()}catch(x){alert(errorText(x))}}};
+$("clear").onclick=async()=>{if(!user)return;if(!confirm("Delete your saved history?"))return;try{const s=await getDocs(query(collection(db,"users",user.uid,"days"),limit(100)));await Promise.all(s.docs.map(x=>deleteDoc(x.ref)));steps=0;active=0;render();await history()}catch(x){alert(errorText(x))}};
+function tick(){if(tracking){active+=16;if(Math.floor(active/5000)!==Math.floor((active-16)/5000))saveDay().catch(()=>{});$("time").textContent=fmt(active)}requestAnimationFrame(tick)}tick();
+if(typeof DeviceMotionEvent==="undefined"||typeof DeviceMotionEvent.requestPermission!=="function")attach();else $("enable").style.display="block";
+onAuthStateChanged(auth,async u=>{user=u;if(u){$("auth").style.display="none";$("app").style.display="block";$("acct").textContent=u.email;try{await load()}catch(x){$("profileMsg").textContent=errorText(x)}}else{$("auth").style.display="block";$("app").style.display="none"}},x=>showMsg(errorText(x),true));
 </script>
-<script>if("serviceWorker"in navigator)navigator.serviceWorker.register("./sw.js").catch(()=>{});</script>
+<script>
+if("serviceWorker"in navigator){
+ navigator.serviceWorker.getRegistrations().then(regs=>Promise.all(regs.map(r=>r.unregister()))).catch(()=>{});
+ if("caches"in window)caches.keys().then(keys=>Promise.all(keys.map(k=>caches.delete(k)))).catch(()=>{});
+}
+</script>
 </body>
 </html>
