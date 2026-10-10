@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="theme-color" content="#0d1117">
+<link rel="manifest" href="manifest.webmanifest">
+<title>MoveTrack</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#0d1117;color:#e6edf3;font:15px system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+main{max-width:520px;margin:auto;padding:16px}h1 span{color:#2f81f7}.card{background:#161b22;border:1px solid #30363d;border-radius:16px;padding:16px;margin:12px 0}
+.row{display:flex;justify-content:space-between;gap:8px;align-items:center}.grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+input{width:100%;padding:12px;margin:5px 0 9px;background:#0d1117;color:#fff;border:1px solid #30363d;border-radius:10px}
+.btn{width:100%;padding:14px;border:0;border-radius:12px;color:white;background:#2f81f7;font-weight:700;margin:5px 0}.green{background:#238636}.red{background:#da3633}.dark{background:#21262d;color:#ddd}
+#app{display:none}.badge{font-size:11px;padding:5px 9px;border-radius:20px;background:#21262d;color:#8b949e}.on{color:#3fb950}
+.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px}.tab{background:#21262d;color:#ddd;border:0;border-radius:9px;padding:10px}.active{background:#2f81f7;color:white}
+.steps{text-align:center;font-size:58px;font-weight:800}.steps small{font-size:14px;color:#8b949e}.bar{height:9px;background:#21262d;border-radius:9px;overflow:hidden}.bar div{height:100%;background:linear-gradient(90deg,#2f81f7,#3fb950)}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.stat{text-align:center;background:#161b22;border:1px solid #30363d;border-radius:14px;padding:12px}.stat b{display:block;font-size:19px}
+.muted{color:#8b949e;font-size:12px}.history{padding:9px 0;border-bottom:1px solid #30363d}.msg{font-size:12px;color:#f85149;margin:7px 0}
+</style>
+</head>
+<body>
+<main>
+<header class="row"><h1>Move<span>Track</span></h1><span id="sensor" class="badge">Sensors waiting</span></header>
+<section id="auth" class="card">
+<div class="tabs"><button id="lt" class="tab active">Log in</button><button id="st" class="tab">Create account</button></div>
+<input id="email" type="email" placeholder="Email"><input id="pass" type="password" placeholder="Password (6+ characters)">
+<button id="authBtn" class="btn">Log in</button><div id="authMsg" class="msg"></div>
+<p class="muted">Create an account to keep your profile and activity in the cloud.</p></section>
+<section id="app">
+<section class="card row"><div><b id="welcome">Welcome</b><div id="acct" class="muted"></div></div><button id="logout" class="btn dark" style="width:auto">Log out</button></section>
+<button id="enable" class="btn green" style="display:none">📱 Enable Motion Sensors</button>
+<section class="card"><div class="steps" id="steps">0 <small>steps</small></div><div class="bar"><div id="fill" style="width:0"></div></div><p class="muted" id="goalText">Goal: 10,000 steps — 0%</p><p class="muted" id="motionInfo">Motion data: waiting for sensor readings.</p></section>
+<div class="stats"><div class="stat"><b id="dist">0.00</b><span class="muted">km</span></div><div class="stat"><b id="cal">0</b><span class="muted">kcal</span></div><div class="stat"><b id="time">0:00</b><span class="muted">active</span></div></div>
+<section class="card"><div class="row"><b>Profile</b><button id="save" class="btn dark" style="width:auto">Save</button></div>
+<div class="grid"><label>Name<input id="name"></label><label>Goal<input id="goal" type="number"></label><label>Weight kg<input id="weight" type="number"></label><label>Height cm<input id="height" type="number"></label></div><div id="profileMsg" class="muted"></div></section>
+<button id="toggle" class="btn">▶ Start Tracking</button><p class="muted">Carry your phone securely in a pocket or waistband. Keep this page open while testing. A phone cannot count foot stamps reliably if it stays still on a table.</p>
+<button id="reset" class="btn dark">Reset today</button>
+<section class="card"><div class="row"><b>Daily history</b><button id="clear" class="btn dark" style="width:auto">Clear</button></div><div id="history"></div></section>
+</section></main>
+<script type="module">
+import{initializeApp}from"https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
+import{getAuth,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut}from"https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
+import{getFirestore,doc,getDoc,setDoc,collection,query,orderBy,limit,getDocs,deleteDoc}from"https://www.gstatic.com/firebasejs/12.5.0/firebase-firestore.js";
+const firebaseConfig={apiKey:"AIzaSyAmiyrtAjvIohRRuvBA3oQrazU-mT7nr4M",authDomain:"movetrack2.firebaseapp.com",projectId:"movetrack2",storageBucket:"movetrack2.firebasestorage.app",messagingSenderId:"631331628340",appId:"1:631331628340:web:9a7611dc9e1ecb7ba03161",measurementId:"G-PQSDENK27F"};
+const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app),$=id=>document.getElementById(id);
+let user=null,mode="login",tracking=false,attached=false,steps=0,active=0,lastTick=0,lastSavedBucket=0;
+let profile={name:"",goal:10000,weight:70,height:170};
+let gravityVec={x:0,y:0,z:0},gravityReady=false,smooth=0,prev=0,prevPrev=0,lastStepAt=0,lastMotionAt=0,motionEvents=0,lastSignalUpdate=0;
+const MIN_STEP_INTERVAL=280,PEAK_THRESHOLD=1.05,MIN_PEAK_PROMINENCE=0.35;
+const day=()=>{const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"Africa/Lagos",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());const p=Object.fromEntries(parts.map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}`};
+const fmt=ms=>{let s=Math.floor(ms/1000),m=Math.floor(s/60),h=Math.floor(m/60);m%=60;return h?`${h}:${String(m).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`:`${m}:${String(s%60).padStart(2,"0")}`};
+const showMsg=(t,error=false)=>{$("authMsg").textContent=t;$("authMsg").style.color=error?"#f85149":"#3fb950"};
+$("lt").onclick=()=>{mode="login";$("lt").classList.add("active");$("st").classList.remove("active");$("authBtn").textContent="Log in"};
+$("st").onclick=()=>{mode="signup";$("st").classList.add("active");$("lt").classList.remove("active");$("authBtn").textContent="Create account"};
+$("authBtn").onclick=async()=>{const e=$("email").value.trim(),p=$("pass").value;if(!e||p.length<6)return showMsg("Enter a valid email and password of at least 6 characters.",true);try{if(mode==="signup"){const c=await createUserWithEmailAndPassword(auth,e,p);await setDoc(doc(db,"users",c.user.uid),{email:e,name:"",goal:10000,weight:70,height:170},{merge:true})}else await signInWithEmailAndPassword(auth,e,p)}catch(x){showMsg(x.message.replace("Firebase: ","").replace(/\s*\(auth\/.*\)\.?/,""),true)}};
+$("logout").onclick=()=>signOut(auth);
+async function load(){const p=await getDoc(doc(db,"users",user.uid));if(p.exists())profile={...profile,...p.data()};profile.email=user.email||profile.email||"";const d=await getDoc(doc(db,"users",user.uid,"days",day()));steps=d.exists()?Number(d.data().steps)||0:0;active=d.exists()?Number(d.data().activeMs)||0:0;lastSavedBucket=Math.floor(active/5000);for(const k of ["name","goal","weight","height"])$(k).value=profile[k]??"";render();await history()}
+async function saveDay(){if(!user)return;await setDoc(doc(db,"users",user.uid,"days",day()),{date:day(),steps,activeMs:Math.round(active),updatedAt:Date.now()},{merge:true})}
+async function history(){if(!user)return;const q=query(collection(db,"users",user.uid,"days"),orderBy("date","desc"),limit(30)),s=await getDocs(q);$("history").innerHTML=s.empty?'<p class="muted">No history yet.</p>':s.docs.map(d=>`<div class="history"><b>${d.data().date}</b> — ${(Number(d.data().steps)||0).toLocaleString()} steps <span class="muted">${fmt(Number(d.data().activeMs)||0)} active</span></div>`).join("")}
+function stride(){return(+profile.height||170)/100*.415}
+function render(){const km=steps*stride()/1000,kcal=Math.round(km*(+profile.weight||70)*.53),g=+profile.goal||10000,p=Math.min(100,steps/g*100);$("steps").innerHTML=steps.toLocaleString()+" <small>steps</small>";$("dist").textContent=km.toFixed(2);$("cal").textContent=kcal.toLocaleString();$("time").textContent=fmt(active);$("fill").style.width=p+"%";$("goalText").textContent=`Goal: ${g.toLocaleString()} steps — ${Math.round(p)}%`}
+$("save").onclick=async()=>{if(!user){$("profileMsg").textContent="Please log in first.";return}profile={name:$("name").value.trim(),email:user.email||"",goal:+$("goal").value||10000,weight:+$("weight").value||70,height:+$("height").value||170};$("profileMsg").textContent="Saving...";try{await setDoc(doc(db,"users",user.uid),profile,{merge:true});$("profileMsg").textContent="";render()}catch(x){$("profileMsg").textContent="Save failed — Project: "+app.options.projectId+" | UID: "+user.uid+" | Error: "+(x.code||x.message)}};
+function updateSensorStatus(){const recent=performance.now()-lastMotionAt<2000;$("sensor").textContent=recent?(tracking?"Motion detected":"Sensor ready"):(attached?"Waiting for motion":"Sensors off");$("sensor").classList.toggle("on",recent);if(lastSignalUpdate===0||performance.now()-lastSignalUpdate>1000){$("motionInfo").textContent=recent?`Motion data received · ${motionEvents} sensor events · last signal ${Math.max(0,Math.round(performance.now()-lastMotionAt))} ms ago`:"No recent motion data. Keep the page open and move the phone gently to test the sensor.";lastSignalUpdate=performance.now()}}
+function motion(e){if(!tracking)return;const a=e.acceleration,ig=e.accelerationIncludingGravity;let x,y,z;if(a&&Number.isFinite(a.x)&&Number.isFinite(a.y)&&Number.isFinite(a.z)){x=a.x;y=a.y;z=a.z}else if(ig&&Number.isFinite(ig.x)&&Number.isFinite(ig.y)&&Number.isFinite(ig.z)){const alpha=.88;if(!gravityReady){gravityVec={x:ig.x,y:ig.y,z:ig.z};gravityReady=true}gravityVec.x=alpha*gravityVec.x+(1-alpha)*ig.x;gravityVec.y=alpha*gravityVec.y+(1-alpha)*ig.y;gravityVec.z=alpha*gravityVec.z+(1-alpha)*ig.z;x=ig.x-gravityVec.x;y=ig.y-gravityVec.y;z=ig.z-gravityVec.z}else{$("motionInfo").textContent="This browser is not providing usable motion values.";return}
+const now=performance.now();lastMotionAt=now;motionEvents++;const magnitude=Math.hypot(x,y,z);smooth=smooth*.65+magnitude*.35;const isPeak=prev>prevPrev&&prev>=smooth,peakValue=prev,prominence=peakValue-Math.min(prevPrev,smooth);if(isPeak&&peakValue>PEAK_THRESHOLD&&prominence>MIN_PEAK_PROMINENCE&&now-lastStepAt>=MIN_STEP_INTERVAL){steps++;lastStepAt=now;render();saveDay().catch(()=>{})}prevPrev=prev;prev=smooth}
+function attach(){if(attached)return;window.addEventListener("devicemotion",motion,{passive:true});attached=true;updateSensorStatus()}
+async function requestSensors(){try{if(typeof DeviceMotionEvent==="undefined")throw new Error("unsupported");if(typeof DeviceMotionEvent.requestPermission==="function"){const r=await DeviceMotionEvent.requestPermission();if(r!=="granted")throw new Error("denied")}attach();$("enable").style.display="none";if(!tracking)start();$("motionInfo").textContent="Motion permission granted. Put your phone in a pocket and start walking to test."}catch(e){alert("Motion access is unavailable or permission was not granted. Open MoveTrack in a supported browser, preferably Chrome, and try again.")}}
+function start(){if(!attached)return requestSensors();tracking=true;lastTick=performance.now();$("toggle").textContent="⏸ Stop Tracking";$("toggle").classList.add("red")}
+function stop(){tracking=false;lastTick=0;$("toggle").textContent="▶ Start Tracking";$("toggle").classList.remove("red");saveDay().catch(()=>{});updateSensorStatus()}
+$("enable").onclick=requestSensors;$("toggle").onclick=()=>tracking?stop():start();
+$("reset").onclick=async()=>{if(confirm("Reset today's steps and active time? This changes today's saved record.")){steps=0;active=0;render();await saveDay();await history()}};
+$("clear").onclick=async()=>{if(!confirm("Delete all your saved history? This cannot be undone."))return;const s=await getDocs(query(collection(db,"users",user.uid,"days"),limit(100)));await Promise.all(s.docs.map(x=>deleteDoc(x.ref)));steps=0;active=0;render();await history()};
+function tick(){const now=performance.now();if(tracking){if(!lastTick)lastTick=now;const delta=Math.max(0,Math.min(1500,now-lastTick));active+=delta;const bucket=Math.floor(active/5000);if(bucket!==lastSavedBucket){lastSavedBucket=bucket;saveDay().catch(()=>{})}$("time").textContent=fmt(active)}lastTick=tracking?now:0;updateSensorStatus();requestAnimationFrame(tick)}tick();
+if(typeof DeviceMotionEvent==="undefined")$("enable").style.display="block";else if(typeof DeviceMotionEvent.requestPermission==="function")$("enable").style.display="block";else attach();
+onAuthStateChanged(auth,async u=>{user=u;if(u){$("auth").style.display="none";$("app").style.display="block";$("acct").textContent=u.email||"Signed in";$("welcome").textContent="Welcome";try{await load();$("profileMsg").textContent=""}catch(x){$("profileMsg").textContent="Could not load cloud data: "+(x.code||x.message)+". Check Firestore rules and internet connection."}}else{stop();$("auth").style.display="block";$("app").style.display="none"}});
+</script>
+<script>if("serviceWorker"in navigator)navigator.serviceWorker.register("./sw.js").catch(()=>{});</script>
+</body></html>
