@@ -43,7 +43,7 @@ input{width:100%;padding:12px;margin:5px 0 9px;background:#0d1117;color:#fff;bor
 <div class="grid"><label>Name<input id="name"></label><label>Goal<input id="goal" type="number"></label><label>Weight kg<input id="weight" type="number"></label><label>Height cm<input id="height" type="number"></label></div>
 <div id="profileMsg" class="muted"></div></section>
 
-<button id="toggle" class="btn">▶ Start Tracking</button><button id="reset" class="btn dark">Reset today</button>
+<button id="toggle" class="btn">▶ Start Tracking</button><p class="muted">For best results, keep your phone securely in a pocket or waistband. A phone cannot count foot stamps reliably if the phone itself stays still.</p><button id="reset" class="btn dark">Reset today</button>
 <section class="card"><div class="row"><b>Daily history</b><button id="clear" class="btn dark" style="width:auto">Clear</button></div><div id="history"></div></section>
 </section>
 </main>
@@ -67,10 +67,11 @@ const app=initializeApp(firebaseConfig);
 const auth=getAuth(app);
 const db=getFirestore(app);
 const $=id=>document.getElementById(id);
-let user=null,mode="login",tracking=false,attached=false,steps=0,active=0,last=0,lastStep=0,gravity=9.81,vals=[];
+let user=null,mode="login",tracking=false,attached=false,steps=0,active=0,last=0,lastStep=0,gravity=9.81,vals=[],lastTick=0,lastSavedBucket=0;
 let profile={name:"",goal:10000,weight:70,height:170};
 
-const day=()=>new Date().toISOString().slice(0,10);
+// Use the calendar date in Nigeria, not UTC, so activity stays on the correct local day.
+const day=()=>{const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"Africa/Lagos",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());const p=Object.fromEntries(parts.map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}`};
 const fmt=ms=>{let s=Math.floor(ms/1000),m=Math.floor(s/60),h=Math.floor(m/60);m%=60;return h?`${h}:${String(m).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`:`${m}:${String(s%60).padStart(2,"0")}`};
 const showMsg=(t,error=false)=>{$("authMsg").textContent=t;$("authMsg").style.color=error?"#f85149":"#3fb950"};
 
@@ -94,8 +95,9 @@ async function load(){
   if(p.exists())profile={...profile,...p.data()};
 profile.email=user.email||profile.email||"";
   const d=await getDoc(doc(db,"users",user.uid,"days",day()));
-  steps=d.exists()?d.data().steps||0:0;
-  active=d.exists()?d.data().activeMs||0:0;
+  steps=d.exists()?Number(d.data().steps)||0:0;
+  active=d.exists()?Number(d.data().activeMs)||0:0;
+  lastSavedBucket=Math.floor(active/5000);
   for(const k of ["name","goal","weight","height"])$(k).value=profile[k]??"";
   render();await history();
 }
@@ -126,19 +128,22 @@ $("save").onclick=async()=>{
     await setDoc(profileRef,profile,{merge:true});
     const verify=await getDoc(profileRef);
     const savedName=verify.exists()?(verify.data().name||"(empty name)"):"(document missing)";
-    $("profileMsg").textContent="Diagnostic — Project: "+app.options.projectId+" | UID: "+user.uid+" | Name read back: "+savedName;
+    $("profileMsg").textContent="";
     render();
   }catch(x){
     $("profileMsg").textContent="Save failed — Project: "+app.options.projectId+" | UID: "+user.uid+" | Error: "+(x.code||x.message);
   }
 };
 function motion(e){
-  const a=e.accelerationIncludingGravity;if(!a||a.x==null)return;
-  const n=performance.now();if(n-last<35)return;last=n;
-  const mag=Math.hypot(a.x,a.y,a.z);gravity=gravity*.9+mag*.1;
-  const d=Math.abs(mag-gravity);if(!tracking)return;
-  vals.push(d);if(vals.length>7)vals.shift();
-  if(vals.length===7&&vals[3]>1.25&&vals[3]>=Math.max(...vals.filter((_,i)=>i!==3))&&n-lastStep>260){
+  const a=e.accelerationIncludingGravity;if(!a||a.x==null||a.y==null||a.z==null||!tracking)return;
+  const n=performance.now();if(n-last<25)return;last=n;
+  const mag=Math.hypot(a.x,a.y,a.z);
+  // Remove the slow-changing gravity component to emphasize movement peaks.
+  gravity=gravity*.88+mag*.12;
+  const d=Math.abs(mag-gravity);
+  vals.push(d);if(vals.length>5)vals.shift();
+  // A small adaptive peak detector. Accuracy depends on phone placement and device sensors.
+  if(vals.length===5&&vals[2]>1.0&&vals[2]>=vals[0]&&vals[2]>=vals[1]&&vals[2]>vals[3]&&vals[2]>=vals[4]&&n-lastStep>280){
     steps++;lastStep=n;render();saveDay().catch(()=>{});
   }
 }
@@ -158,10 +163,10 @@ async function requestSensors(){
 }
 function start(){
   if(!attached)return requestSensors();
-  tracking=true;$("toggle").textContent="⏸ Stop Tracking";$("toggle").classList.add("red");last=performance.now();
+  tracking=true;lastTick=performance.now();$("toggle").textContent="⏸ Stop Tracking";$("toggle").classList.add("red");
 }
 function stop(){
-  tracking=false;$("toggle").textContent="▶ Start Tracking";$("toggle").classList.remove("red");saveDay().catch(()=>{});
+  tracking=false;lastTick=0;$("toggle").textContent="▶ Start Tracking";$("toggle").classList.remove("red");saveDay().catch(()=>{});
 }
 $("enable").onclick=requestSensors;
 $("toggle").onclick=()=>tracking?stop():start();
@@ -173,11 +178,16 @@ $("clear").onclick=async()=>{
 };
 
 function tick(){
+  const now=performance.now();
   if(tracking){
-    active+=16;
-    if(Math.floor(active/5000)!==Math.floor((active-16)/5000))saveDay().catch(()=>{});
+    if(!lastTick)lastTick=now;
+    const delta=Math.max(0,now-lastTick);
+    active+=delta;
+    const bucket=Math.floor(active/5000);
+    if(bucket!==lastSavedBucket){lastSavedBucket=bucket;saveDay().catch(()=>{});}
     $("time").textContent=fmt(active);
   }
+  lastTick=tracking?now:0;
   requestAnimationFrame(tick);
 }
 tick();
@@ -188,10 +198,12 @@ else $("enable").style.display="block";
 onAuthStateChanged(auth,async u=>{
   user=u;
   if(u){
-    $("auth").style.display="none";$("app").style.display="block";$("acct").textContent=u.email;
-    $("welcome").textContent="Welcome";await load();
+    $("auth").style.display="none";$("app").style.display="block";$("acct").textContent=u.email||"Signed in";
+    $("welcome").textContent="Welcome";
+    try{await load();$("profileMsg").textContent="Profile and activity loaded.";}
+    catch(x){$("profileMsg").textContent="Could not load cloud data: "+(x.code||x.message)+". Check Firestore rules and internet connection.";}
   }else{
-    $("auth").style.display="block";$("app").style.display="none";
+    stop();$("auth").style.display="block";$("app").style.display="none";
   }
 });
 </script>
