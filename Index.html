@@ -47,7 +47,7 @@ const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app),$
 let user=null,mode="login",tracking=false,attached=false,steps=0,active=0,lastTick=0,lastSavedBucket=0;
 let profile={name:"",goal:10000,weight:70,height:170};
 let gravityVec={x:0,y:0,z:0},gravityReady=false,smooth=0,prev=0,prevPrev=0,lastStepAt=0,lastMotionAt=0,motionEvents=0,lastSignalUpdate=0;
-const MIN_STEP_INTERVAL=280,PEAK_THRESHOLD=1.05,MIN_PEAK_PROMINENCE=0.35;
+const MIN_STEP_INTERVAL=520,PEAK_THRESHOLD=1.75,MIN_PEAK_PROMINENCE=0.75;
 const day=()=>{const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"Africa/Lagos",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());const p=Object.fromEntries(parts.map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}`};
 const fmt=ms=>{let s=Math.floor(ms/1000),m=Math.floor(s/60),h=Math.floor(m/60);m%=60;return h?`${h}:${String(m).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`:`${m}:${String(s%60).padStart(2,"0")}`};
 const showMsg=(t,error=false)=>{$("authMsg").textContent=t;$("authMsg").style.color=error?"#f85149":"#3fb950"};
@@ -66,9 +66,22 @@ function motion(e){if(!tracking)return;const a=e.acceleration,ig=e.accelerationI
 const now=performance.now();lastMotionAt=now;motionEvents++;const magnitude=Math.hypot(x,y,z);smooth=smooth*.65+magnitude*.35;const isPeak=prev>prevPrev&&prev>=smooth,peakValue=prev,prominence=peakValue-Math.min(prevPrev,smooth);if(isPeak&&peakValue>PEAK_THRESHOLD&&prominence>MIN_PEAK_PROMINENCE&&now-lastStepAt>=MIN_STEP_INTERVAL){steps++;lastStepAt=now;render();saveDay().catch(()=>{})}prevPrev=prev;prev=smooth}
 function attach(){if(attached)return;window.addEventListener("devicemotion",motion,{passive:true});attached=true;updateSensorStatus()}
 async function requestSensors(){try{if(typeof DeviceMotionEvent==="undefined")throw new Error("unsupported");if(typeof DeviceMotionEvent.requestPermission==="function"){const r=await DeviceMotionEvent.requestPermission();if(r!=="granted")throw new Error("denied")}attach();$("enable").style.display="none";if(!tracking)start();$("motionInfo").textContent="Motion permission granted. Put your phone in a pocket and start walking to test."}catch(e){alert("Motion access is unavailable or permission was not granted. Open MoveTrack in a supported browser, preferably Chrome, and try again.")}}
-function start(){if(!attached)return requestSensors();tracking=true;lastTick=performance.now();$("toggle").textContent="⏸ Stop Tracking";$("toggle").classList.add("red")}
+function start(){if(!attached)return requestSensors();prev=0;prevPrev=0;smooth=0;tracking=true;lastTick=performance.now();$("toggle").textContent="⏸ Stop Tracking";$("toggle").classList.add("red");$("motionInfo").textContent="Tracking while this page stays open. Keep the phone secure and walk naturally."}
 function stop(){tracking=false;lastTick=0;$("toggle").textContent="▶ Start Tracking";$("toggle").classList.remove("red");saveDay().catch(()=>{});updateSensorStatus()}
 $("enable").onclick=requestSensors;$("toggle").onclick=()=>tracking?stop():start();
+
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden && tracking){
+    tracking=false;
+    lastTick=0;
+    $("toggle").textContent="▶ Start Tracking";
+    $("toggle").classList.remove("red");
+    saveDay().catch(()=>{});
+    $("motionInfo").textContent="Tracking paused because this page went into the background or the screen locked. Return here and tap Start Tracking. Background counting needs a native Android app.";
+    updateSensorStatus();
+  }
+});
+
 $("reset").onclick=async()=>{if(confirm("Reset today's steps and active time? This changes today's saved record.")){steps=0;active=0;render();await saveDay();await history()}};
 $("clear").onclick=async()=>{if(!confirm("Delete all your saved history? This cannot be undone."))return;const s=await getDocs(query(collection(db,"users",user.uid,"days"),limit(100)));await Promise.all(s.docs.map(x=>deleteDoc(x.ref)));steps=0;active=0;render();await history()};
 function tick(){const now=performance.now();if(tracking){if(!lastTick)lastTick=now;const delta=Math.max(0,Math.min(1500,now-lastTick));active+=delta;const bucket=Math.floor(active/5000);if(bucket!==lastSavedBucket){lastSavedBucket=bucket;saveDay().catch(()=>{})}$("time").textContent=fmt(active)}lastTick=tracking?now:0;updateSensorStatus();requestAnimationFrame(tick)}tick();
